@@ -83,9 +83,6 @@ func Index(w http.ResponseWriter, r *http.Request) {
 }
 
 func getIndexTemplateString() string {
-	// TODO: box up top for name, chat, topic (hidden vs text field depending on
-	// if topic filter on.)  when posting redir to topic feed
-	// TODO: finish html/js, add readme and screenshots
 	return `<html>
     <head>
       <title>micro-chat</title>
