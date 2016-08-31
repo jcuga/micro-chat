@@ -1,12 +1,13 @@
 package main
 
 import (
+	"flag"
+	"github.com/jcuga/golongpoll"
 	"html/template"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
-
-	"github.com/jcuga/golongpoll"
 )
 
 const (
@@ -14,6 +15,9 @@ const (
 )
 
 func main() {
+	listenAddress := flag.String("addr", ":8080", "address:port to serve.")
+	flag.Parse()
+
 	// Our chat server is just a longpoll/pub-sub server.
 	manager, err := golongpoll.StartLongpoll(golongpoll.Options{})
 	if err != nil {
@@ -22,9 +26,8 @@ func main() {
 	http.HandleFunc("/", Index)
 	http.HandleFunc("/post", getChatPostClosure(manager))
 	http.HandleFunc("/subscribe", manager.SubscriptionHandler)
-	listenAddress := ":8080"
-	log.Printf("Launching chat server on %s", listenAddress)
-	http.ListenAndServe(listenAddress, nil)
+	log.Printf("Launching chat server on %s", *listenAddress)
+	http.ListenAndServe(*listenAddress, nil)
 }
 
 type ChatPost struct {
@@ -37,7 +40,12 @@ type ChatPost struct {
 // call Publish() from within web handler
 // NOTE: the manager is safe to call this way because it relies on channels
 func getChatPostClosure(manager *golongpoll.LongpollManager) func(w http.ResponseWriter, r *http.Request) {
+	reg, err := regexp.Compile("[^A-Za-z0-9]+")
+	if err != nil {
+		log.Fatal("Error compiling regexp: ", err)
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
+		logRequest(r)
 		if r.Method != "POST" {
 			http.Error(w, "Invalid request method.", 405)
 			return
@@ -48,6 +56,7 @@ func getChatPostClosure(manager *golongpoll.LongpollManager) func(w http.Respons
 			return
 		}
 		topic := r.PostFormValue("topic")
+		topic = normalizeTopic(topic, reg)
 		display_name := r.PostFormValue("display_name")
 		message := r.PostFormValue("message")
 		if len(strings.TrimSpace(topic)) == 0 || len(strings.TrimSpace(display_name)) == 0 ||
@@ -66,6 +75,7 @@ func getChatPostClosure(manager *golongpoll.LongpollManager) func(w http.Respons
 }
 
 func Index(w http.ResponseWriter, r *http.Request) {
+	logRequest(r)
 	if r.Method != "GET" {
 		http.Error(w, "Invalid request method.", 405)
 		return
@@ -80,6 +90,26 @@ func Index(w http.ResponseWriter, r *http.Request) {
 		AllChats    string
 	}{topic, displayName, ALL_CHATS}
 	t.Execute(w, templateData)
+}
+
+func normalizeTopic(topic string, reg *regexp.Regexp) string {
+	norm := reg.ReplaceAllString(topic, "-")
+	norm = strings.ToLower(strings.Trim(norm, "-"))
+	return norm
+}
+
+func logRequest(r *http.Request) {
+	topic := ""
+	displayName := ""
+	if r.Method == "GET" {
+		topic = r.URL.Query().Get("topic")
+		displayName = r.URL.Query().Get("display_name")
+	} else if r.Method == "POST" {
+		topic = r.PostFormValue("topic")
+		displayName = r.PostFormValue("display_name")
+	}
+	log.Printf("HTTP %s %s  topic: %s, display_name: %s src_ip: %s x_forwarded_for: %s\n",
+		r.Method, r.URL.Path, topic, displayName, r.RemoteAddr, r.Header.Get("X-FORWARDED-FOR"))
 }
 
 func getIndexTemplateString() string {
@@ -116,9 +146,9 @@ func getIndexTemplateString() string {
           // for browsers that don't have console
           if(typeof window.console == 'undefined') { window.console = {log: function (msg) {} }; }
 
-          // Start checking for any events that occurred within 60 minutes prior to page load
+          // Start checking for any events that occurred within 24 hours minutes prior to page load
           // so we display recent chats:
-          var sinceTime = (new Date(Date.now() - 3600000)).getTime();
+          var sinceTime = (new Date(Date.now() - 86400000)).getTime();
 
           // subscribe to a specific topic or all chats
 					var category = "{{ if .Topic }}{{ .Topic }}{{ else }}{{ .AllChats }}{{ end }}";
