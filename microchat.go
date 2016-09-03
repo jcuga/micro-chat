@@ -18,14 +18,36 @@ const (
 
 func main() {
 	listenAddress := flag.String("addr", ":8080", "address:port to serve.")
+	maxChatLifeHours := flag.Uint("maxChatHrs", 24, "how long chats are stored (hours)")
+	topicRefreshSeconds := flag.Uint("topicRefreshSec", 30, "how often the popular/recent topic boards are refreshed in browser (seconds)")
+	maxTopicListNum := flag.Uint("maxTopicLists", 10, "how many topics listed in top popular/recent topics")
+	numChatsOnScreen := flag.Uint("chatsOnScreen", 50, "How many chats to display on a screen.")
+	if (*maxChatLifeHours < 1) {
+			log.Fatalf("maxChatHrs cmdline arg must be >= 1")
+	}
+	if (*topicRefreshSeconds < 1) {
+			log.Fatalf("topicRefreshSec cmdline arg must be >= 1")
+	}
+	if (*maxTopicListNum < 1) {
+			log.Fatalf("maxTopicLists cmdline arg must be >= 1")
+	}
+	if (*numChatsOnScreen < 1) {
+			log.Fatalf("chatsOnScreen cmdline arg must be >= 1")
+	}
 	flag.Parse()
 
 	// Our chat server is just a longpoll/pub-sub server.
-	manager, err := golongpoll.StartLongpoll(golongpoll.Options{})
+	manager, err := golongpoll.StartLongpoll(golongpoll.Options{
+		// make more than we show so we can collect stats by topic further back
+		MaxEventBufferSize: int(*numChatsOnScreen) * 10,
+		EventTimeToLiveSeconds: int(*maxChatLifeHours) * 60 * 60,
+	})
 	if err != nil {
 		log.Fatalf("Failed to create chat longpoll manager: %q", err)
 	}
-	http.HandleFunc("/", Index)
+
+	http.HandleFunc("/", getIndexClosure(*maxChatLifeHours,
+		*topicRefreshSeconds, *maxTopicListNum, *numChatsOnScreen))
 	http.HandleFunc("/post", getChatPostClosure(manager))
 	http.HandleFunc("/subscribe", manager.SubscriptionHandler)
 	log.Printf("Launching chat server on %s", *listenAddress)
@@ -104,23 +126,33 @@ func getChatPostClosure(manager *golongpoll.LongpollManager) func(w http.Respons
 	}
 }
 
-func Index(w http.ResponseWriter, r *http.Request) {
-	logRequest(r)
-	if r.Method != "GET" {
-		http.Error(w, "Invalid request method.", 405)
-		return
+
+
+func getIndexClosure(maxChatLifeHours, topicRefreshSeconds, maxTopicListNum, numChatsOnScreen uint) func(w http.ResponseWriter, r *http.Request) {
+	return func (w http.ResponseWriter, r *http.Request) {
+		logRequest(r)
+		if r.Method != "GET" {
+			http.Error(w, "Invalid request method.", 405)
+			return
+		}
+		topic := r.URL.Query().Get("topic")
+		displayName := r.URL.Query().Get("display_name")
+		t := template.New("chat_homepage")
+		t, _ = t.Parse(getIndexTemplateString())
+		templateData := struct {
+			Topic       string
+			DisplayName string
+			AllChats    string
+			MaxChatLifeHours uint
+			TopicRefreshSeconds uint
+			MaxTopicListNum uint
+			NumChatsOnScreen uint
+		}{topic, displayName, ALL_CHATS, maxChatLifeHours, topicRefreshSeconds,
+			maxTopicListNum, numChatsOnScreen}
+		t.Execute(w, templateData)
 	}
-	topic := r.URL.Query().Get("topic")
-	displayName := r.URL.Query().Get("display_name")
-	t := template.New("chat_homepage")
-	t, _ = t.Parse(getIndexTemplateString())
-	templateData := struct {
-		Topic       string
-		DisplayName string
-		AllChats    string
-	}{topic, displayName, ALL_CHATS}
-	t.Execute(w, templateData)
 }
+
 
 func normalizeTopic(topic string, reg *regexp.Regexp) string {
 	norm := reg.ReplaceAllString(topic, "-")
@@ -146,67 +178,120 @@ func getIndexTemplateString() string {
 	return `<html>
     <head>
       <title>micro-chat</title>
-      <script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0">
+			<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/skeleton/2.0.4/skeleton.min.css">
+			<style>
+				a.other-topic {
+					font-size: 2em;
+  			}
+				a.topic {
+					font-size: 1.5em;
+				}
+				time.timeago {
+						font-size: 0.9em;
+						color: #999999
+  			}
+				div.displayName {
+					font-size: 0.9em;
+					color: #FF8888;
+					font-weight: bold;
+					font-style: italic;
+			  }
+				div.chat {
+					margin: 0 0 1em 0;
+					padding: 0.6em;
+					border-style: solid;
+			    border-width: 1px;
+					border-color: #AAEEFF;
+					-moz-border-radius: 15px;
+					border-radius: 15px;
+  			}
+				div.msg p {
+					margin: 0 0 1em 0;
+					padding: 0;
+				}
+			</style>
+    	<script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
 			<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-timeago/1.5.3/jquery.timeago.min.js"></script>
     </head>
     <body>
-			<form id="chatForm" method="POST" action="/post">
-				{{ if .Topic }}
-				  <input type="hidden" id="topic" name="topic" value="{{ .Topic }}">
-				{{ else }}
-				  <label for="topic">Topic:</label><input type="text" maxlength="48" id="topic" name="topic">
-				{{ end }}
-				{{ if .DisplayName }}
-				<input id="displayName" type="hidden" name="display_name" value="{{.DisplayName}}">
-				{{ else }}
-				<label id="nameLbl" for="display_name">Post as</label>
-				<input id="displayName" type="text" maxlength="24" name="display_name" value="">
-				<label for="message">Message</label>
-				{{ end }}
-				<textarea id="msgArea" rows="2" cols="50" name="message" maxlength="512"></textarea>
-				{{ if .Topic }}
-				  <!-- dynamic page instead of form post/redirect -->
-					<button id="chat-btn" type="button">Post</button>
-				{{ else }}
-					<input id="chat-submit" type="submit" value="post">
-				{{ end }}
-				<div id="feedback"></div>
-			</form>
-			{{ if .Topic }}
-        <h2 id="chat-topic-hdr">Chat topic: {{ .Topic}}</h2>
-				<a href="/">Select other topic.</a>
-      {{ else }}
-        <h2 id="chat-topic-hdr">Showing all chats</h2>
-      {{ end }}
-      <div id="chats_list">
-      </div>
-			<div id="recent_topics">
-				<h2 id="recent-topic-hdr">Recent topics</h2>
-				<div id="recent_topics_list">
-					<span class="nothing-yet">No topics yet.</span>
+
+			<div class="container">
+			<!-- just use a number and class 'column' or 'columns' -->
+
+			<div class="row">
+
+		    <div class="six columns">
+					{{ if .Topic }}
+		        <h2 id="chat-topic-hdr">{{ .Topic}}</h2>
+						<a class="other-topic" href="/">Select other topic.</a>
+		      {{ else }}
+		        <h2 id="chat-topic-hdr">Latest chats</h2>
+		      {{ end }}
+
+					<form id="chatForm" method="POST" action="/post">
+						{{ if .Topic }}
+						  <input type="hidden" id="topic" name="topic" value="{{ .Topic }}">
+						{{ else }}
+						  <label for="topic">Topic:</label><input type="text" maxlength="48" id="topic" name="topic">
+						{{ end }}
+						{{ if .DisplayName }}
+						<input id="displayName" type="hidden" name="display_name" value="{{.DisplayName}}">
+						{{ else }}
+						<label id="nameLbl" for="display_name">Post as</label>
+						<input id="displayName" type="text" maxlength="24" name="display_name" value="">
+						<label id="lblForMsg" for="message">Message</label>
+						{{ end }}
+						<textarea id="msgArea" rows="2" cols="50" name="message" maxlength="512"></textarea>
+						{{ if .Topic }}
+						  <!-- dynamic page instead of form post/redirect -->
+							<button id="chat-btn" type="button">Post</button>
+						{{ else }}
+							<input id="chat-submit" type="submit" value="post">
+						{{ end }}
+						<div id="feedback"></div>
+					</form>
+
+		      <div id="chats_list">
+		      </div>
 				</div>
-      </div>
-			<div id="popular_topics">
-				<h2 id="popular-topic-hdr">Popular topics</h2>
-				<div id="popular_topics_list">
-					<span class="nothing-yet">No topics yet.</span>
+
+				<div class="three columns">
+					<div id="recent_topics">
+						<h2 id="recent-topic-hdr">Recent</h2>
+						<div id="recent_topics_list">
+							<span class="nothing-yet">No topics yet.</span>
+						</div>
+		      </div>
 				</div>
-      </div>
+
+				<div class="three columns">
+					<div id="popular_topics">
+						<h2 id="popular-topic-hdr">Popular</h2>
+						<div id="popular_topics_list">
+							<span class="nothing-yet">No topics yet.</span>
+						</div>
+		      </div>
+				</div>
+
+		  </div>
+
+			</div>
+
       <script>
           // for browsers that don't have console
           if(typeof window.console == 'undefined') { window.console = {log: function (msg) {} }; }
 
           // Start checking for any events that occurred within 24 hours minutes prior to page load
           // so we display recent chats:
-          var sinceTime = (new Date(Date.now() - 86400000)).getTime();  // TODO: template out this value
-
+          var sinceTime = (new Date(Date.now() - ({{.MaxChatLifeHours}} * 60 * 60 * 1000))).getTime();
           // subscribe to a specific topic or all chats
 					var category = "{{ if .Topic }}{{ .Topic }}{{ else }}{{ .AllChats }}{{ end }}";
 
 					// for current page of chats--could be either specific category or all
 					// chats
           (function poll() {
-              var timeout = 45;  // in seconds
+              var timeout = 50;  // in seconds
               var optionalSince = "";
               if (sinceTime) {
                   optionalSince = "&since_time=" + sinceTime;
@@ -215,7 +300,7 @@ func getIndexTemplateString() string {
               // how long to wait before starting next longpoll request in each case:
               var successDelay = 10;  // 10 ms
               var errorDelay = 3000;  // 3 sec
-							var maxChats = 4; // limit max number of chats displayed
+							var maxChats = {{.NumChatsOnScreen}};
               $.ajax({ url: pollUrl,
                   success: function(data) {
                       if (data && data.events && data.events.length > 0) {
@@ -234,7 +319,7 @@ func getIndexTemplateString() string {
 															var topicPart = ""
 															// only show topic link if its not our current topic
 															if (event.data.topic !== "{{.Topic}}") {
-																topicPart = "<div class=\"topic\"><a href='/?topic=" + event.data.topic + "'>" + event.data.topic + "</a></div>"
+																topicPart = "<div class=\"topic\"><a class=\"topic\" href='/?topic=" + event.data.topic + "'>" + event.data.topic + "</a></div>"
 															}
 															$("#chats_list").prepend(
 																	"<div class=\"chat\">" + topicPart + "<div class=\"msg\">" + event.data.message + "</div><div class=\"displayName\">" + event.data.display_name + "</div><div class=\"postTime\">"  + timestamp +  "</div></div>"
@@ -281,21 +366,21 @@ func getIndexTemplateString() string {
 					// less frequent longpoll for all chats so we can populate the widgets
 					// showing recent topics and most popular topics
 					(function checkTopics() {
-              var timeout = 45;  // in seconds
+              var timeout = 50;  // in seconds
 							// always fetch all chats during last N seconds
 							// we don't update subsequent calls to timestamp of most
 							// recent event because we're always fetching list of
 							// recent, and not only ones since last call...
-							var topicSinceTime = (new Date(Date.now() - 86400000)).getTime();  // TODO: template out this val
+							var topicSinceTime = (new Date(Date.now() - ({{.MaxChatLifeHours}} * 60 * 60 * 1000))).getTime();
               var topicsSince = "&since_time=" + topicSinceTime;
               var pollUrl = "/subscribe?timeout=" + timeout + "&category=" + {{ .AllChats }} + topicsSince;
               // how long to wait before starting next longpoll request in each case:
 							// these are spread out more than regular chat poll since this is
 							// just show show pretty features like recent topics/popular topics
-            	var successDelay = 10000;  // 10 sec  // TODO: template out?
-              var errorDelay = 30000;  // 30 sec
+            	var successDelay = ({{.TopicRefreshSeconds}} * 1000);
+              var errorDelay = 60000;  // 30 sec
 							// number of topics in our Top Recent/Top Active iists
-							var maxNumTopics = 3;  // TODO: template value?
+							var maxNumTopics = {{.MaxTopicListNum}};
               $.ajax({ url: pollUrl,
                   success: function(data) {
                       if (data && data.events && data.events.length > 0) {
@@ -318,7 +403,7 @@ func getIndexTemplateString() string {
 															// and when we get to the end we'll have most recent timestamp for each topic
 	 													  lastTimestampPerTopic[event.data.topic] = [event.timestamp, event];
 															// NOTE: we don't update since time here based on
-															// event time stamps. we always fetch all chats within last N seconds.  // TODO: template time here
+															// event time stamps. we always fetch all chats within last N seconds
                           }
 													// Populate our panels showing recent/popular topics
 													var sortableTopicCounts = [];
@@ -347,7 +432,7 @@ func getIndexTemplateString() string {
 															var msgDate = new Date(event.timestamp);
 															var timestamp = "<time class=\"timeago\" datetime=\"" + msgDate.toISOString() + "\">"+msgDate.toLocaleTimeString()+"</time>";
 															var chatHtml = "<div class=\"chat\"><div class=\"msg\">" + event.data.message + "</div><div class=\"displayName\">" + event.data.display_name + "</div><div class=\"postTime\">"  + timestamp +  "</div></div>"
-															$("#recent_topics_list").append("<div class=\"topic-item\"><a href=\"/?topic=" + sortableTopicTimes[i][0] + "\">" + sortableTopicTimes[i][0]  + "</a>" + chatHtml + "</div>");
+															$("#recent_topics_list").append("<div class=\"topic-item\"><a class=\"topic\" href=\"/?topic=" + sortableTopicTimes[i][0] + "\">" + sortableTopicTimes[i][0]  + "</a>" + chatHtml + "</div>");
 														}
 													}
 													if (sortableTopicCounts.length > 0) {
@@ -358,7 +443,7 @@ func getIndexTemplateString() string {
 															var timestamp = "<time class=\"timeago\" datetime=\"" + msgDate.toISOString() + "\">"+msgDate.toLocaleTimeString()+"</time>";
 															var chatHtml = "<div class=\"chat\"><div class=\"msg\">" + event.data.message + "</div><div class=\"displayName\">" + event.data.display_name + "</div><div class=\"postTime\">"  + timestamp +  "</div></div>"
 
-															$("#popular_topics_list").append("<div class=\"topic-item\"><a href=\"/?topic=" + sortableTopicCounts[i][0]  + "\">" + sortableTopicCounts[i][0]  + "</a> (" + sortableTopicCounts[i][1][0] + ")" + chatHtml + "</div>");
+															$("#popular_topics_list").append("<div class=\"topic-item\"><a class=\"topic\" href=\"/?topic=" + sortableTopicCounts[i][0]  + "\">" + sortableTopicCounts[i][0]  + "</a> (" + sortableTopicCounts[i][1][0] + ")" + chatHtml + "</div>");
 														}
 													}
 													// update timestamps:
@@ -415,6 +500,7 @@ func getIndexTemplateString() string {
 								$("#msgArea").focus();
 								$("#chat-btn").removeAttr('disabled');
 								$("#displayName").hide();
+								$("#lblForMsg").hide();
 								$("#nameLbl").hide();
 						  },
 						  error: function(xhr, textStatus, error){
