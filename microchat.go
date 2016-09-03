@@ -70,7 +70,14 @@ func getChatPostClosure(manager *golongpoll.LongpollManager) func(w http.Respons
 		// haven't filtered to a specific topic.
 		manager.Publish(ALL_CHATS, chat)
 		// redirect to the chat page for the given topic
-		http.Redirect(w, r, "/?topic="+topic+"&display_name="+display_name, http.StatusSeeOther)
+		if r.PostFormValue("doAjax") == "yes" {
+			// ajax post, return ok
+ 			w.Write([]byte("ok"))
+			return
+		} else {
+			// form post, do Redirect
+			http.Redirect(w, r, "/?topic="+topic+"&display_name="+display_name, http.StatusSeeOther)
+		}
 	}
 }
 
@@ -117,31 +124,39 @@ func getIndexTemplateString() string {
     <head>
       <title>micro-chat</title>
       <script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
+			<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-timeago/1.5.3/jquery.timeago.min.js"></script>
     </head>
     <body>
-			<form method="POST" action="/post">
+			<form id="chatForm" method="POST" action="/post">
 				{{ if .Topic }}
-				  <input type="hidden" name="topic" value="{{ .Topic }}">
+				  <input type="hidden" id="topic" name="topic" value="{{ .Topic }}">
 				{{ else }}
-				  <label for="topic">Topic:</label><br><input type="text" name="topic"><br>
+				  <label for="topic">Topic:</label><input type="text" id="topic" name="topic">
 				{{ end }}
-				<label for="display_name">Post as</label><br/>
-				<input type="text" name="display_name" value="{{if .DisplayName}}{{.DisplayName}}{{end}}">
-				<br/>
-				<label for="message">Message</label><br/>
-				<textarea rows="2" cols="50" name="message"></textarea>
-				<br>
-				<input type="submit" value="post">
+				{{ if .DisplayName }}
+				<input id="displayName" type="hidden" name="display_name" value="{{.DisplayName}}">
+				{{ else }}
+				<label id="nameLbl" for="display_name">Post as</label>
+				<input id="displayName" type="text" name="display_name" value="">
+				<label for="message">Message</label>
+				{{ end }}
+				<textarea id="msgArea" rows="2" cols="50" name="message"></textarea>
+				{{ if .Topic }}
+				  <!-- dynamic page instead of form post/redirect -->
+					<button id="chat-btn" type="button">Post</button>
+				{{ else }}
+					<input id="chat-submit" type="submit" value="post">
+				{{ end }}
+				<div id="feedback"></div>
 			</form>
-			<hr>
 			{{ if .Topic }}
-        <h2>Showing chats about: {{ .Topic}}</h2>
-				<a href="/">Show all chats.</a>
+        <h2>Chat topic: {{ .Topic}}</h2>
+				<a href="/">Select other topic.</a>
       {{ else }}
         <h2>Showing all chats</h2>
       {{ end }}
-      <ul id="chats_list">
-      </ul>
+      <div id="chats_list">
+      </div>
       <script>
           // for browsers that don't have console
           if(typeof window.console == 'undefined') { window.console = {log: function (msg) {} }; }
@@ -171,9 +186,17 @@ func getIndexTemplateString() string {
                           for (var i = 0; i < data.events.length; i++) {
                               // Display event
                               var event = data.events[i];
-                              $("#chats_list").prepend(
-																"<li>in <a href='/?topic=" + event.data.topic + "'>" + event.data.topic + "</a>" + "<br>" + event.data.message + "<br />by " + event.data.display_name + " at "  + (new Date(event.timestamp).toLocaleTimeString()) +  "</li>"
+															msgDate = new Date(event.timestamp);
+															var timestamp = "<time class=\"timeago\" datetime=\"" + msgDate.toISOString() + "\">"+msgDate.toLocaleTimeString()+"</time>";
+															var topicPart = ""
+															// only show topic link if its not our current topic
+															if (event.data.topic !== "{{.Topic}}") {
+																topicPart = "<div class=\"topic\"><a href='/?topic=" + event.data.topic + "'>" + event.data.topic + "</a></div>"
+															}
+															$("#chats_list").prepend(
+																	"<div class=\"chat\">" + topicPart + "<div class=\"msg\">" + event.data.message + "</div><div class=\"displayName\">" + event.data.display_name + "</div><div class=\"postTime\">"  + timestamp +  "</div></div>"
 															)
+															jQuery("time.timeago").timeago();
                               // Update sinceTime to only request events that occurred after this one.
                               sinceTime = event.timestamp;
                           }
@@ -204,6 +227,55 @@ func getIndexTemplateString() string {
               }
               });
           })();
+
+					$("#chat-btn").click(function() {
+						$("#chat-btn").attr("disabled", "disabled");
+						$("#displayName").attr("disabled", "disabled");
+						$("#msgArea").attr("disabled", "disabled");
+						$("#chatForm").addClass("sending");
+						$("#feedback").empty();
+						var dname = $("#displayName").val();
+						var msg = $("#msgArea").val();
+						var t = $("#topic").val();
+						$.ajax({
+						  type: 'POST',
+						  url: "/post",
+						  data: {
+ 								doAjax: "yes", topic: t, display_name: dname, message: msg
+						  },
+						  success: function(data){
+								$("#chatForm").removeClass("sending");
+								$("#displayName").removeAttr('disabled');
+								$("#msgArea").removeAttr('disabled');
+								$("#msgArea").val('');
+								$("#msgArea").focus();
+								$("#chat-btn").removeAttr('disabled');
+								$("#displayName").hide();
+								$("#nameLbl").hide();
+						  },
+						  error: function(xhr, textStatus, error){
+								$("#chatForm").removeClass("sending");
+								$("#displayName").removeAttr('disabled');
+								$("#msgArea").removeAttr('disabled');
+								$("#msgArea").focus();
+								$("#chat-btn").removeAttr('disabled');
+								$("#feedback").html("<span>" + xhr.responseText + "</span>");
+						  }
+						});
+					});
+
+					$("#msgArea").keypress(function(event) {
+					    if (event.which == 13) {
+					        event.preventDefault();
+					        $("#chat-submit").click();
+									$("#chat-btn").click();
+					    }
+					});
+
+					jQuery(document).ready(function() {
+					  jQuery("time.timeago").timeago();
+					});
+
       </script>
     </bodY>
   </html>`
