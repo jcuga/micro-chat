@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"github.com/jcuga/golongpoll"
+	"github.com/microcosm-cc/bluemonday"
+	"github.com/russross/blackfriday"
 	"html/template"
 	"log"
 	"net/http"
@@ -44,6 +46,15 @@ func truncateInput(input string, maxlen int) string {
 	return string(output)
 }
 
+func sanitizeInput(input string) string {
+	return bluemonday.UGCPolicy().Sanitize(input)
+}
+
+func toMarkdown(input string) string {
+	html := blackfriday.MarkdownBasic([]byte(input))
+	return string(html[:])
+}
+
 // Create a closure that contains a ref to our longpoll manager so we can
 // call Publish() from within web handler
 // NOTE: the manager is safe to call this way because it relies on channels
@@ -73,9 +84,9 @@ func getChatPostClosure(manager *golongpoll.LongpollManager) func(w http.Respons
 			return
 		}
 		// enforce max lengths--note strings could be non-ascii so treat as runes
-		topic = truncateInput(topic, 48)
-		display_name = truncateInput(display_name, 24)
-		message = truncateInput(message, 256)
+		topic = truncateInput(topic, 48)  // topic sanitized by normalization func that only allows A-Za-z0-9space
+		display_name = sanitizeInput(truncateInput(display_name, 24))
+		message = sanitizeInput(toMarkdown(truncateInput(message, 512)))
 		chat := ChatPost{DisplayName: display_name, Message: message, Topic: topic}
 		manager.Publish(topic, chat)
 		// show on the all-chats channel as well that shows on the homepage when you
@@ -113,7 +124,7 @@ func Index(w http.ResponseWriter, r *http.Request) {
 
 func normalizeTopic(topic string, reg *regexp.Regexp) string {
 	norm := reg.ReplaceAllString(topic, "-")
-	norm = strings.ToLower(strings.Trim(norm, "-"))
+	norm = strings.Trim(norm, "-")
 	return norm
 }
 
@@ -152,7 +163,7 @@ func getIndexTemplateString() string {
 				<input id="displayName" type="text" maxlength="24" name="display_name" value="">
 				<label for="message">Message</label>
 				{{ end }}
-				<textarea id="msgArea" rows="2" cols="50" name="message" maxlength="256"></textarea>
+				<textarea id="msgArea" rows="2" cols="50" name="message" maxlength="512"></textarea>
 				{{ if .Topic }}
 				  <!-- dynamic page instead of form post/redirect -->
 					<button id="chat-btn" type="button">Post</button>
@@ -418,7 +429,7 @@ func getIndexTemplateString() string {
 					});
 
 					$("#msgArea").keypress(function(event) {
-					    if (event.which == 13) {
+					    if (event.which == 13 && !event.shiftKey) {
 					        event.preventDefault();
 					        $("#chat-submit").click();
 									$("#chat-btn").click();
