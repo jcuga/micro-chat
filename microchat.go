@@ -178,12 +178,18 @@ func getIndexTemplateString() string {
               // how long to wait before starting next longpoll request in each case:
               var successDelay = 10;  // 10 ms
               var errorDelay = 3000;  // 3 sec
+							var maxChats = 4; // limit max number of chats displayed
               $.ajax({ url: pollUrl,
                   success: function(data) {
                       if (data && data.events && data.events.length > 0) {
                           // got events, process them
                           // NOTE: these events are in chronological order (oldest first)
-                          for (var i = 0; i < data.events.length; i++) {
+													var startIndex = 0;
+													// don't load more than max number of chats per screen:
+													if (data.events.length > maxChats) {
+														startIndex = data.events.length - maxChats;
+													}
+                          for (var i = startIndex; i < data.events.length; i++) {
                               // Display event
                               var event = data.events[i];
 															msgDate = new Date(event.timestamp);
@@ -200,7 +206,14 @@ func getIndexTemplateString() string {
                               // Update sinceTime to only request events that occurred after this one.
                               sinceTime = event.timestamp;
                           }
-                          // success!  start next longpoll
+													// make sure our displayed chats doesn't exceed our
+													// max on screen
+													var excessChats = $("#chats_list > div").length - maxChats;
+													if (excessChats > 0) {
+														// remove excess
+														$('#chats_list > div').slice(-1 * excessChats).remove();
+													}
+													// success!  start next longpoll
                           setTimeout(poll, successDelay);
                           return;
                       }
