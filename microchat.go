@@ -72,7 +72,7 @@ func getChatPostClosure(manager *golongpoll.LongpollManager) func(w http.Respons
 		// redirect to the chat page for the given topic
 		if r.PostFormValue("doAjax") == "yes" {
 			// ajax post, return ok
- 			w.Write([]byte("ok"))
+			w.Write([]byte("ok"))
 			return
 		} else {
 			// form post, do Redirect
