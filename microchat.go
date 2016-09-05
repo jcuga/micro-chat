@@ -333,7 +333,43 @@ func getIndexTemplateString() string {
 					color: #FF0000;
 					cursor: pointer;
 				}
-
+				.jumpNav {
+					padding: 0.3rem;
+					display: inline-block;
+					visibility: hidden;
+					float: right;
+					cursor: pointer;
+			  }
+				.jumpNav:hover {
+					color: red;
+				}
+				#jumpToTopOfChats {
+					margin-right: 2.0rem;
+			  }
+				#jumpToEndOfRecent {
+					margin-left: 2.0rem;
+			  }
+				@media (max-width: 550px) {
+					.jumpNav {
+						visibility: visible;
+				  }
+					#jumpToBottomOfChats {
+						margin-left: 0rem;
+				  }
+				}
+				#jumpToBottomOfChats {
+					margin-left: 2.0rem;
+			  }
+				#jumpToBottomOfPage {
+					visibility: visible;
+				}
+				#jumpToTopOfPage {
+					visibility: visible;
+				}
+				#spacerNavStub {
+					margin-left: 2.0rem;
+					visibility: hidden;
+  			}
 			</style>
 			<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.css">
     	<script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
@@ -349,10 +385,16 @@ func getIndexTemplateString() string {
 
 		    <div class="six columns chat-stream">
 					{{ if .Topic }}
-		        <h2 id="chat-topic-hdr"><i class="fa fa-comments"></i> {{ .Topic}}</h2>
+		        <h2 id="chat-topic-hdr"><i class="fa fa-comments"></i> {{ .Topic}}
+						<span id="jumpToBottomOfChats" class="jumpNav fa fa-chevron-down"></span>
+						<span id="jumpToBottomOfPage" class="jumpNav fa fa-arrow-down"></span>
+						</h2>
 						<a class="other-topic" href="/">Select other topic.</a>
 		      {{ else }}
-		        <h2 id="chat-topic-hdr"><i class="fa fa-comments"></i> Latest chats</h2>
+		        <h2 id="chat-topic-hdr"><i class="fa fa-comments"></i> Latest chats
+						<span id="jumpToBottomOfChats" class="jumpNav fa fa-chevron-down"></span>
+						<span id="jumpToBottomOfPage" class="jumpNav fa fa-arrow-down"></span>
+						</h2>
 		      {{ end }}
 					<hr />
 					<form id="chatForm" method="POST" action="/post">
@@ -392,7 +434,10 @@ func getIndexTemplateString() string {
 
 				<div class="three columns">
 					<div id="recent_topics">
-						<h2 id="recent-topic-hdr"><i class="fa fa-comments"></i> Recent</h2>
+						<h2 id="recent-topic-hdr"><i class="fa fa-comments"></i> Recent
+  						<span id="jumpToPopular" class="jumpNav fa fa-chevron-down"></span>
+							<span id="jumpToTopOfChats" class="jumpNav fa fa-chevron-up"></span>
+						</h2>
 					<hr />
 						<div id="recent_topics_list">
 							<span class="nothing-yet"><i class="fa fa-refresh fa-spin" aria-hidden="true"></i></span>
@@ -402,7 +447,10 @@ func getIndexTemplateString() string {
 
 				<div class="three columns">
 					<div id="popular_topics">
-						<h2 id="popular-topic-hdr"><i class="fa fa-comments"></i> Popular</h2>
+						<h2 id="popular-topic-hdr"><i class="fa fa-comments"></i> Popular
+						<span id="jumpToEndOfRecent" class="jumpNav fa fa-arrow-down"></span>
+						<span id="jumpToRecent" class="jumpNav fa fa-chevron-up"></span>
+  					</h2>
 					<hr />
 						<div id="popular_topics_list">
 							<span class="nothing-yet"><i class="fa fa-refresh fa-spin" aria-hidden="true"></i></span>
@@ -411,9 +459,19 @@ func getIndexTemplateString() string {
 				</div>
 
 		  </div>
+			<div class="row">
+				<div class="six columns chat-stream">
+					<h2>
+					<span id="spacerNavStub" class="jumpNav fa fa-chevron-down"></span>
+					<span id="jumpToTopOfPage" class="jumpNav fa fa-arrow-up"></span>
+					</h2>
+				</div>
 
 			</div>
-			<div id="footer">&copy; Urmom Lol 2016</div>
+
+			</div>
+			<div id="footer">
+			&copy; Urmom Lol 2016</div>
 			<div id="mobileCanary"></div>
 
       <script>
@@ -745,6 +803,37 @@ func getIndexTemplateString() string {
 							alert('Visit: https://duckduckgo.com/?q=markdown+cheat+sheet&ia=answer&iax=1 for tips on using Markdown.');
 						}
 					});
+
+          function scrollToId(elemId){
+              var elem = $("#" + elemId);
+              $('html,body').animate({scrollTop: elem.offset().top},'slow');
+          }
+
+					$("#jumpToBottomOfChats").click(function() {
+            scrollToId("recent-topic-hdr");
+          });
+          $("#jumpToTopOfChats").click(function() {
+            scrollToId("chat-topic-hdr");
+          });
+          $("#jumpToPopular").click(function() {
+            scrollToId("popular-topic-hdr");
+          });
+          $("#jumpToRecent").click(function() {
+            scrollToId("recent-topic-hdr");
+          });
+					$("#jumpToEndOfRecent").click(function() {
+						$('html, body').animate({
+				        scrollTop: $(document).height()
+				    }, 'slow');
+          });
+					$("#jumpToBottomOfPage").click(function() {
+						$('html, body').animate({
+				        scrollTop: $(document).height()
+				    }, 'slow');
+          });
+					$("#jumpToTopOfPage").click(function() {
+            scrollToId("chat-topic-hdr");
+          });
       </script>
     </bodY>
   </html>`
