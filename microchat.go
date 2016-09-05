@@ -22,24 +22,24 @@ func main() {
 	topicRefreshSeconds := flag.Uint("topicRefreshSec", 30, "how often the popular/recent topic boards are refreshed in browser (seconds)")
 	maxTopicListNum := flag.Uint("maxTopicLists", 10, "how many topics listed in top popular/recent topics")
 	numChatsOnScreen := flag.Uint("chatsOnScreen", 50, "How many chats to display on a screen.")
-	if (*maxChatLifeHours < 1) {
-			log.Fatalf("maxChatHrs cmdline arg must be >= 1\n")
+	if *maxChatLifeHours < 1 {
+		log.Fatalf("maxChatHrs cmdline arg must be >= 1\n")
 	}
-	if (*topicRefreshSeconds < 1) {
-			log.Fatalf("topicRefreshSec cmdline arg must be >= 1\n")
+	if *topicRefreshSeconds < 1 {
+		log.Fatalf("topicRefreshSec cmdline arg must be >= 1\n")
 	}
-	if (*maxTopicListNum < 1) {
-			log.Fatalf("maxTopicLists cmdline arg must be >= 1\n")
+	if *maxTopicListNum < 1 {
+		log.Fatalf("maxTopicLists cmdline arg must be >= 1\n")
 	}
-	if (*numChatsOnScreen < 1) {
-			log.Fatalf("chatsOnScreen cmdline arg must be >= 1\n")
+	if *numChatsOnScreen < 1 {
+		log.Fatalf("chatsOnScreen cmdline arg must be >= 1\n")
 	}
 	flag.Parse()
 
 	// Our chat server is just a longpoll/pub-sub server.
 	manager, err := golongpoll.StartLongpoll(golongpoll.Options{
 		// make more than we show so we can collect stats by topic further back
-		MaxEventBufferSize: int(*numChatsOnScreen) * 10,
+		MaxEventBufferSize:     int(*numChatsOnScreen) * 10,
 		EventTimeToLiveSeconds: int(*maxChatLifeHours) * 60 * 60,
 	})
 	if err != nil {
@@ -109,7 +109,7 @@ func getChatPostClosure(manager *golongpoll.LongpollManager) func(w http.Respons
 			return
 		}
 		// enforce max lengths--note strings could be non-ascii so treat as runes
-		topic = truncateInput(topic, 48)  // topic sanitized by normalization func that only allows A-Za-z0-9space
+		topic = truncateInput(topic, 48) // topic sanitized by normalization func that only allows A-Za-z0-9space
 		display_name = sanitizeInput(truncateInput(display_name, 28))
 		message = sanitizeInput(toMarkdown(truncateInput(message, 512)))
 		chat := ChatPost{DisplayName: display_name, Message: message, Topic: topic}
@@ -129,10 +129,8 @@ func getChatPostClosure(manager *golongpoll.LongpollManager) func(w http.Respons
 	}
 }
 
-
-
 func getIndexClosure(maxChatLifeHours, topicRefreshSeconds, maxTopicListNum, numChatsOnScreen uint) func(w http.ResponseWriter, r *http.Request) {
-	return func (w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		logRequest(r)
 		if r.Method != "GET" {
 			http.Error(w, "Invalid request method.", 405)
@@ -143,19 +141,18 @@ func getIndexClosure(maxChatLifeHours, topicRefreshSeconds, maxTopicListNum, num
 		t := template.New("chat_homepage")
 		t, _ = t.Parse(getIndexTemplateString())
 		templateData := struct {
-			Topic       string
-			DisplayName string
-			AllChats    string
-			MaxChatLifeHours uint
+			Topic               string
+			DisplayName         string
+			AllChats            string
+			MaxChatLifeHours    uint
 			TopicRefreshSeconds uint
-			MaxTopicListNum uint
-			NumChatsOnScreen uint
+			MaxTopicListNum     uint
+			NumChatsOnScreen    uint
 		}{topic, displayName, ALL_CHATS, maxChatLifeHours, topicRefreshSeconds,
 			maxTopicListNum, numChatsOnScreen}
 		t.Execute(w, templateData)
 	}
 }
-
 
 func normalizeTopic(topic string, reg *regexp.Regexp) string {
 	norm := reg.ReplaceAllString(topic, "-")
@@ -649,7 +646,7 @@ func getIndexTemplateString() string {
 								} else {
 									event.preventDefault();
 					        $("#chat-submit").click();
-									$("#chat-btn").click();									
+									$("#chat-btn").click();
 								}
 					    }
 					});
