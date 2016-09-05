@@ -278,6 +278,7 @@ func getIndexTemplateString() string {
 				textarea {
 					display: block;
 					width: 100%;
+					resize: vertical;
 				}
 				input[type='text'],
 				textarea {
@@ -320,7 +321,18 @@ func getIndexTemplateString() string {
 				@media only screen and (max-width: 760px) {
 				  #mobileCanary { display: none; }
 				}
+				#recent_topics, #popular_topics, #chats_list {
+					margin-bottom: 3.0rem;
+				}
 
+				span.txtMarkup {
+					margin-left: 0.1rem;
+					padding: 0.6rem;
+				}
+				span.txtMarkup:hover {
+					color: #FF0000;
+					cursor: pointer;
+				}
 
 			</style>
 			<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.css">
@@ -364,6 +376,12 @@ func getIndexTemplateString() string {
 						{{ else }}
 							<input id="chat-submit" type="submit" value="post">
 						{{ end }}
+						<span id="addPicture" title="Add Picture" class="txtMarkup"><i class="fa fa-photo"></i></span>
+						<span id="addLink" title="Add Link" class="txtMarkup"><i class="fa fa-link"></i></span>
+						<span id="addHeader" title="Add Header" class="txtMarkup"><i class="fa fa-header"></i></span>
+						<span id="addList" title="Add List" class="txtMarkup"><i class="fa fa-list-ul"></i></span>
+						<span id="markdownHelp" title="How to use Markdown" class="txtMarkup"><i class="fa fa-question"></i></span>
+
 						<div id="feedback"></div>
 					</form>
 
@@ -374,7 +392,7 @@ func getIndexTemplateString() string {
 
 				<div class="three columns">
 					<div id="recent_topics">
-						<h2 id="recent-topic-hdr">Recent</h2>
+						<h2 id="recent-topic-hdr"><i class="fa fa-comments"></i> Recent</h2>
 					<hr />
 						<div id="recent_topics_list">
 							<span class="nothing-yet"><i class="fa fa-refresh fa-spin" aria-hidden="true"></i></span>
@@ -384,7 +402,7 @@ func getIndexTemplateString() string {
 
 				<div class="three columns">
 					<div id="popular_topics">
-						<h2 id="popular-topic-hdr">Popular</h2>
+						<h2 id="popular-topic-hdr"><i class="fa fa-comments"></i> Popular</h2>
 					<hr />
 						<div id="popular_topics_list">
 							<span class="nothing-yet"><i class="fa fa-refresh fa-spin" aria-hidden="true"></i></span>
@@ -675,6 +693,58 @@ func getIndexTemplateString() string {
 			  	};
 					$("#changeDisplayName").click(clickToChangeNameFunc)
 
+					$("#addPicture").click(function() {
+						var picUrl = prompt("Enter picture's URL", "");
+						if (picUrl != null && picUrl.length > 0) {
+   							$('#msgArea').val( $('#msgArea').val() + '\n![](' + picUrl + ')\n' );
+                setTimeout(function() {
+									// put focus at end of textarea
+									var text = $("#msgArea").val();
+									$("#msgArea").focus().val("").val(text);
+								}, 100);
+						}
+					});
+					$("#addLink").click(function() {
+						var linkUrl = prompt("Enter Link's URL", "");
+						if (linkUrl != null && linkUrl.length > 0) {
+							var linkText = prompt("Enter Link's Text (optional)", "");
+							if(linkText == null || linkText.length == 0) {
+								linkText = linkUrl;
+							}
+							$('#msgArea').val( $('#msgArea').val() + '\n['+linkText+'](' + linkUrl + ')\n' );
+							setTimeout(function() {
+								// put focus at end of textarea
+								var text = $("#msgArea").val();
+								$("#msgArea").focus().val("").val(text);
+							}, 100);
+						}
+					});
+					$("#addHeader").click(function() {
+						$('#msgArea').val( $('#msgArea').val() + '\n## ' );
+						setTimeout(function() {
+							// put focus at end of textarea
+							var text = $("#msgArea").val();
+							$("#msgArea").focus().val("").val(text);
+						}, 80);
+					});
+					$("#addList").click(function() {
+						$('#msgArea').val( $('#msgArea').val() + '\n*  ' );
+						setTimeout(function() {
+							// put focus at end of textarea
+							var text = $("#msgArea").val();
+							$("#msgArea").focus().val("").val(text);
+						}, 80);
+					});
+					$("#markdownHelp").click(function() {
+						var win = window.open('https://duckduckgo.com/?q=markdown+cheat+sheet&ia=answer&iax=1', '_blank');
+						if (win) {
+							//Browser has allowed it to be opened
+							win.focus();
+						} else {
+							//Browser has blocked it
+							alert('Visit: https://duckduckgo.com/?q=markdown+cheat+sheet&ia=answer&iax=1 for tips on using Markdown.');
+						}
+					});
       </script>
     </bodY>
   </html>`
